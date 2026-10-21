@@ -17,9 +17,6 @@ on:
         default: "true"
   push:
     branches: [main, a52sxq]
-    paths:
-      - "xnu/patches/**"
-      - ".github/workflows/xnu.yml"
 
 concurrency:
   group: xnu-${{ github.ref }}
