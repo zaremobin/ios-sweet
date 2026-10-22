@@ -44,11 +44,12 @@ def words(v):
 
 def main():
     nodes = parse(open(sys.argv[1], 'rb').read())
-    out = {'memory': [], 'gic': None, 'ufs': None, 'timebase': None, 'bootargs': None}
+    out = {'memory': [], 'gic': None, 'ufs': None, 'timer_hz': None,
+           'framebuffer': None, 'bootargs': None}
     for path, props in nodes.items():
         leaf = path.rsplit('/', 1)[-1]
         reg = props.get('reg')
-        if leaf.startswith('memory@') and reg:
+        if (leaf.startswith('memory@') or leaf == 'memory') and reg:
             w = words(reg)
             for i in range(0, len(w) - 3, 4):  # 2 address cells + 2 size cells
                 base = (w[i] << 32) | w[i + 1]
@@ -59,8 +60,11 @@ def main():
             out['gic'] = [hex(x) for x in words(reg)]
         elif leaf.startswith('ufshc@') and b'qcom,ufshc' in props.get('compatible', b''):
             out['ufs'] = [hex(x) for x in words(reg)]
-        elif props.get('timebase-frequency'):
-            out['timebase'] = words(props['timebase-frequency'])[0]
+        elif b'arm,armv8-timer' in props.get('compatible', b'') and props.get('clock-frequency'):
+            out['timer_hz'] = words(props['clock-frequency'])[0]
+        if props.get('label') == b'cont_splash_region\0' and reg:
+            w = words(reg)
+            out['framebuffer'] = [hex((w[0] << 32) | w[1]), hex((w[2] << 32) | w[3])]
         if props.get('bootargs'):
             out['bootargs'] = props['bootargs'].rstrip(b'\0').decode(errors='replace')
     out['memory'].sort()

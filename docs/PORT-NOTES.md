@@ -107,13 +107,36 @@ carry over from sweet unchanged. Patches 0081+ are the device bring-up set.
 - `tools/selftest.sh` — asserts the ADT builds with the right identity and
   that fdtmem reads memory/GIC/UFS from a compiled sample DTB. Currently green.
 
+## Live FDT facts (a52sxq.dtb from the phone, 2026-10-22)
+
+Dumped with `tools/dump-fdt.sh` over adb (root/Magisk), parsed with
+`tools/fdtmem.py`. These replace every placeholder.
+
+- **DRAM (bootloader-patched, 8 GB total, `androidboot.dram_info=01,07,01,8G`):**
+  `0x80000000+0x39700000`, `0xb9d00000+0x1e00000`, `0xc0000000+0xc0000000`,
+  `0x180000000+0x100000000`
+- **Highest fixed carve-out below 4 GiB:** `ramoops@0xF0B00000` (end `0xf0c00000`)
+  → kernel-managed low region `0xf0c00000+0x8f400000`, high region
+  `0x180000000+0x100000000` (untouched 4 GB bank)
+- **GIC:** GICD `0x17a00000`, GICR `0x17a60000`; **UFS** `0x1d84000` (+ICE
+  `0x1d88000`, HWKM `0x1d90000`)
+- **Timer:** `clock-frequency` 19,200,000; `arm,armv8-timer` PPIs 13/14/11/12 →
+  virtual timer INTID **27** (sweet's 19 was wrong for this SoC)
+- **Framebuffer:** `cont_splash_region` `0xe1000000+0x2300000`
+- **Active panel:** ABL cmdline selects `ss_dsi_panel_S6E3FC3_AMS646YD01_LO_FHD`
+  (the cmd-mode panel), not the NT36672E — matters for M2 presentation
+- **Bootloader:** `A528BXXSBGYI3`, `verifiedbootstate=orange`, `warranty_bit=1`,
+  serial `R5CR9071XVV`, `androidboot.dtbo_idx=2`, `dtb_idx=0`
+- Samsung log regions: `sec_dbg 0x1FF000@0xF0000000`, `sec_log 0x200000@0xF0200000`
+  (RAM-as-console candidates for a persistent log ring)
+
+Untracked dump lives at `data/a52sxq.dtb` (git-ignored: it carries the serial).
+
 ## Open items
 
-1. **DRAM banks are placeholders.** The yupik memory node is empty in the
-   vendor DTS (bootloader patches it). Run `tools/dump-fdt.sh` on the PC with
-   the phone attached, then set `LOWBASE/LOWSIZE/MIDBASE/MIDSIZE`.
-2. `VTIMER_INTID` (19) is inherited from sweet — confirm against the live
-   timer node before trusting it.
+1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
+   them against the dump whenever `data/a52sxq.dtb` is present.
+2. ~~VTIMER_INTID~~ **done** — 27, from the live FDT.
 3. Fork + CI: needs the user's GitHub account (`gh` is not installed here).
 4. Boot-image header version for a52sxq (likely v2, `unpack_bootv2.py`
    already in tools/) — check against the phone's stock boot image.

@@ -26,3 +26,13 @@ grep -q "'0x80000000', '0x60000000'" <<<"$out" || { echo "FAIL: memory bank 0x80
 grep -q "'0x17a00000'" <<<"$out" || { echo "FAIL: GIC not parsed"; exit 1; }
 grep -q "'0x1d84000'" <<<"$out" || { echo "FAIL: UFS not parsed"; exit 1; }
 echo "OK: ADT builds, identity present, FDT memory/GIC/UFS parsed"
+
+# Real-device regression: only when a live FDT dump is available (data/ is untracked)
+if [ -f ../data/a52sxq.dtb ]; then
+  out=$(python3 tools/fdtmem.py ../data/a52sxq.dtb)
+  grep -q "'0x180000000', '0x100000000'" <<<"$out" || { echo "FAIL: 4 GB upper bank not parsed"; exit 1; }
+  grep -q "timer_hz: 19200000" <<<"$out" || { echo "FAIL: timer not 19.2 MHz"; exit 1; }
+  grep -q "'0xe1000000', '0x2300000'" <<<"$out" || { echo "FAIL: splash framebuffer moved"; exit 1; }
+  echo "OK: live a52sxq dump matches mkadt.py constants"
+fi
+

@@ -5,25 +5,25 @@ Derived from ios-sweet/ios-topaz tools/mkadt.py. Every MMIO address below comes
 from the vendor yupik DTS (arch/arm64/boot/dts/vendor/qcom/yupik.dtsi and
 samsung/a52/a52sxq/a52sxq_eur_open_w00_r01.dts) — not from guesswork. DRAM
 banks are the exception: the bootloader patches the empty yupik memory node, so
-run tools/dump-fdt.sh first and pass the values in LOWBASE/LOWSIZE/MIDBASE/
-MIDSIZE (or --mem=low|mid|high).
+the live FDT dump supplies them (LOWBASE/LOWSIZE/HIGHBASE/HIGHSIZE override).
 
-Usage: mkadt.py OUT.adt [--dump] [--qemu] [--native] [--mem=low|mid|high]
+Usage: mkadt.py OUT.adt [--dump] [--qemu] [--native] [--mem=low|high]
 """
 import hashlib, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adt  # noqa: E402
 
-# --- DRAM: placeholders until tools/dump-fdt.sh reports the live banks ------
-# Typical SM7325 6/8 GB layout: low bank from 0x80000000, upper bank at 4 GiB.
-LOW_PHYS_BASE = int(os.environ.get('LOWBASE', '0x80000000'), 16)
-LOW_MEM_SIZE = int(os.environ.get('LOWSIZE', '0x60000000'), 16)
-MID_PHYS_BASE = int(os.environ.get('MIDBASE', '0xe1000000'), 16)  # above splash/qseecom
-MID_MEM_SIZE = int(os.environ.get('MIDSIZE', '0x1f000000'), 16)
-HIGH_PHYS_BASE = int(os.environ.get('HIGHBASE', '0x100000000'), 16)
+# --- DRAM: from the live FDT dump (a52sxq.dtb, 2026-10-21) -------------------
+# The bootloader reported four banks totalling 8 GB:
+#   0x80000000+0x39700000, 0xb9d00000+0x1e00000, 0xc0000000+0xc0000000,
+#   0x180000000+0x100000000
+# Every fixed carve-out sits below 0xf0c00000 (highest: ramoops@F0B00000), so
+# 'low' is the clean 2.29 GB below 4 GiB and 'high' is the untouched 4 GB bank.
+LOW_PHYS_BASE = int(os.environ.get('LOWBASE', '0xf0c00000'), 16)
+LOW_MEM_SIZE = int(os.environ.get('LOWSIZE', '0x8f400000'), 16)
+HIGH_PHYS_BASE = int(os.environ.get('HIGHBASE', '0x180000000'), 16)
 HIGH_MEM_SIZE = int(os.environ.get('HIGHSIZE', '0x100000000'), 16)
-DRAM_PLACEHOLDER = 'MIDBASE' not in os.environ
 
 # /arm-io children are relative to this; it must not be 0 (serial_init bails)
 SOC_BASE = 0x01000000
@@ -31,13 +31,16 @@ SOC_BASE = 0x01000000
 # intc: interrupt-controller@17a00000, redistributor-stride 0x20000, 8 cores
 GICD, GICD_SIZE = 0x17a00000, 0x10000
 GICR, GICR_SIZE = 0x17a60000, 0x100000
-# splash_memory (label "cont_splash_region") left lit by ABL, panel 1080x2400
-FB, FB_SIZE = 0xe1000000, 0x2400000
+# splash_memory (label "cont_splash_region") left lit by ABL, panel 1080x2400:
+# reg = <0xe1000000 0x2300000> in the live FDT. ABL's cmdline selects the
+# S6E3FC3 (AMS646YD01) FHD panel on this unit, not the NT36672E.
+FB, FB_SIZE = 0xe1000000, 0x2300000
 FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
 # ufshc@1d84000 "ufs_mem": 2 lanes, 19.2 MHz ref clock, IRQ SPI 265
 UFS, UFS_SIZE = 0x01d84000, 0x3000
 TIMEBASE = 19200000
-VTIMER_INTID = 19
+# arm,armv8-timer PPI 11 (virtual) -> INTID 16+11 = 27, from the live FDT
+VTIMER_INTID = 27
 A52S_ECID = 0x4135325300000001  # 'A52S' + 1, synthetic
 
 # QEMU virt (-M virt,gic-version=3): brings the pipeline up without a phone
@@ -76,9 +79,8 @@ def node(name, props=(), children=()):
     return n
 
 
-def build(seed=None, qemu=False, native=False, mem='mid'):
+def build(seed=None, qemu=False, native=False, mem='low'):
     phys_base, mem_size = {'low': (LOW_PHYS_BASE, LOW_MEM_SIZE),
-                           'mid': (MID_PHYS_BASE, MID_MEM_SIZE),
                            'high': (HIGH_PHYS_BASE, HIGH_MEM_SIZE)}[mem]
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
     seed = seed if seed is not None else os.urandom(64)
@@ -217,10 +219,7 @@ def build(seed=None, qemu=False, native=False, mem='mid'):
 
 
 if __name__ == '__main__':
-    if DRAM_PLACEHOLDER and '--qemu' not in sys.argv:
-        print('warning: DRAM banks are placeholders — run tools/dump-fdt.sh, then pass '
-              'MIDBASE/MIDSIZE (etc.) from its output', file=sys.stderr)
-    mem = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--mem=')), 'mid')
+    mem = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--mem=')), 'low')
     root = build(qemu='--qemu' in sys.argv, native='--native' in sys.argv, mem=mem)
     blob = adt.serialize(root)
     open(sys.argv[1], 'wb').write(blob)
