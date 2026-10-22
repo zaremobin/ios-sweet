@@ -25,6 +25,15 @@ out=$(python3 tools/fdtmem.py "$tmp/t.dtb")
 grep -q "'0x80000000', '0x60000000'" <<<"$out" || { echo "FAIL: memory bank 0x80000000 not parsed"; echo "$out"; exit 1; }
 grep -q "'0x17a00000'" <<<"$out" || { echo "FAIL: GIC not parsed"; exit 1; }
 grep -q "'0x1d84000'" <<<"$out" || { echo "FAIL: UFS not parsed"; exit 1; }
+# Shim compiles for aarch64 with no absolute relocations (needs the cross gcc)
+if command -v aarch64-linux-gnu-gcc >/dev/null; then
+  SKIP_IMAGE=1 bash shim/build.sh >/dev/null 2>&1 || { echo "FAIL: shim build"; exit 1; }
+  [ -s shim/out/Image ] || { echo "FAIL: no shim Image"; exit 1; }
+  echo "OK: shim compiles ($(stat -c%s shim/out/Image) byte Image)"
+else
+  echo "SKIP: aarch64-linux-gnu-gcc not installed (apt install gcc-aarch64-linux-gnu)"
+fi
+
 echo "OK: ADT builds, identity present, FDT memory/GIC/UFS parsed"
 
 # Real-device regression: only when a live FDT dump is available (data/ is untracked)

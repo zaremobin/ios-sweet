@@ -13,7 +13,7 @@ done
 # header's image_size (start.o, linked at 0) may be an absolute address.
 abs=$(aarch64-linux-gnu-readelf -r out/shim.o out/console.o out/mmu.o out/fdt.o out/loader.o out/ufs.o | grep -c ABS64 || true)
 [ "$abs" = 0 ] || { echo "error: $abs absolute relocations in C objects" >&2; exit 1; }
-$CC $CFLAGS -static -T shim.ld -Wl,--build-id=none -Wl,--no-warn-rwx-segments -Wl,-N \
+$CC $CFLAGS -static -T shim.ld -Wl,--build-id=none -Wl,-N \
 	out/start.o out/shim.o out/console.o out/mmu.o out/fdt.o out/loader.o out/ufs.o -o out/shim.elf
 $OBJCOPY -O binary out/shim.elf out/Image
 # ABL copies the file; pad to image_size so .bss/stacks exist as zeroed bytes.
@@ -26,11 +26,15 @@ if [ -n "${1:-}" ]; then
 else
 	(cd out && rm -rf rd && mkdir rd && cd rd && find . | cpio -o -H newc --quiet | gzip -9 > ../ramdisk.bin)
 fi
+if [ -z "${SKIP_IMAGE:-}" ]; then
+# Samsung image header/offsets are still TODO (needs the stock boot.img from the
+# phone); SKIP_IMAGE=1 builds just the shim binary + host console render.
 mkbootimg --header_version 2 --kernel out/Image --ramdisk out/ramdisk.bin \
 	--dtb ../dtb/boot_unpacked/dtb --base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 \
 	--tags_offset 0x100 --dtb_offset 0x1f00000 --pagesize 4096 \
 	--os_version 17.0.0 --os_patch_level 2035-06 \
 	--cmdline "console=null" -o out/shim-boot.img
+fi
 # Host render of the console layout.
 gcc -O1 -Wall -o out/host_test console.c host_test.c && ./out/host_test
-ls -l out/Image out/shim-boot.img
+ls -l out/Image out/shim-boot.img 2>/dev/null || ls -l out/Image

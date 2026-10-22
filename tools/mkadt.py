@@ -114,8 +114,9 @@ def build(seed=None, qemu=False, native=False, mem='low'):
         # Same relaxed SIP as `csrutil disable`; lp-sip1: unauthenticated root.
         node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
-    # SMP: gold cluster only — MPIDR 0x400-0x403 (yupik.dtsi CPU4-CPU7, the
-    # 4x Cortex-A78, capacity 1946/1985). The A55 cluster sits at 0x000-0x300;
+    # SMP: gold cluster only — live FDT /cpus/cpu@400..@700, reg = <0x0 0x400>..
+    # <0x0 0x700>: the 4x Cortex-A78 (capacity-dmips 1946/1985). Aff0 is 0 on
+    # every core here, so MPIDR = index << 8. The A55 cluster is 0x000-0x300;
     # A55 also has a 16K granule, so silver can be added later if it helps.
     cpu_nodes = []
     for core in range(1 if qemu else 4):
@@ -123,7 +124,7 @@ def build(seed=None, qemu=False, native=False, mem='low'):
             ph(),
             ('device_type', cstr('cpu')),
             ('compatible', cstr('qcom,kryo670') + cstr('ARM,v8')),
-            ('reg', u32(core if qemu else 0x400 | core)),  # real MPIDR Aff1:Aff0
+            ('reg', u32(core if qemu else (4 + core) << 8)),  # real MPIDR: Aff1=core, Aff0=0
             ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
             ('cluster-id', u32(0)),
             ('cluster-type', u32(0)),  # homogeneous CLUSTER_TYPE_SMP, not AMP

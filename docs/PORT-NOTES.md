@@ -132,12 +132,39 @@ Dumped with `tools/dump-fdt.sh` over adb (root/Magisk), parsed with
 
 Untracked dump lives at `data/a52sxq.dtb` (git-ignored: it carries the serial).
 
+## Shim status for a52sxq (2026-10-22)
+
+sweet's shim was already 90% right for yupik — IMEM restart reason
+`0x146aa65c`, GICD `0x17a00000` / GICR `0x17a60000`, and PSCI `CPU_ON` with
+`mpidr = i << 8` all match this SoC. Only the timer PPIs were wrong.
+
+- `VTIMER_INTID` 19 → **27**, `PTIMER_INTID` 18 → **30** (live FDT
+  `arm,armv8-timer`: PPIs 11 and 14 → INTIDs 16+11, 16+14)
+- No gold-cluster switch needed: the A55 cores (0x000-0x300) also have a 16K
+  granule, unlike topaz's A53 silver cluster. The boot core ABL hands us runs
+  the loader directly.
+- yupik has no `qcom,pshold` node; `reset()` already calls `PSCI_SYSTEM_RESET`
+  first, so PSHOLD stays as a harmless last resort.
+- `shim/build.sh` gained `SKIP_IMAGE=1` (build the Image without the Android
+  boot wrapper) and lost `--no-warn-rwx-segments` (binutils 2.38 rejects it).
+- Verified locally: 7 objects compile, **0 ABS64 relocations**, `out/Image` =
+  180,224 bytes, entry 0x0. `tools/selftest.sh` now covers it.
+
+Still open: the Samsung boot-image wrapper. `build.sh` needs the header version,
+kernel/ramdisk offsets, pagesize and the DTB source that this device's ABL
+accepts. That comes from the phone's own boot partition:
+
+    adb shell su -c "dd if=/dev/block/by-name/boot of=/sdcard/boot.img"
+    adb pull /sdcard/boot.img
+
+then `python3 tools/unpack_bootv2.py boot.img`.
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
    them against the dump whenever `data/a52sxq.dtb` is present.
 2. ~~VTIMER_INTID~~ **done** — 27, from the live FDT.
-3. Fork + CI: needs the user's GitHub account (`gh` is not installed here).
-4. Boot-image header version for a52sxq (likely v2, `unpack_bootv2.py`
-   already in tools/) — check against the phone's stock boot image.
+3. ~~Fork + CI~~ **done** — `zaremobin/ios-sweet` branch `a52sxq`, CI green.
+4. Boot-image wrapper: pull the phone's `boot` partition and unpack it
+   (`tools/unpack_bootv2.py`) to fix header version, offsets and the DTB.
 

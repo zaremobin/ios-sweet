@@ -3,7 +3,7 @@
  *   - CPU feature registers (16K granule, GIC sysreg interface)
  *   - PSCI/SMCCC version and which PSCI calls the Qualcomm TZ offers
  *   - SMP: PSCI CPU_ON for the 7 secondaries, each reports its MPIDR
- *   - GICv3 Group 1 IRQ from the virtual timer (INTID 19 on Qualcomm)
+ *   - GICv3 Group 1 IRQ from the virtual timer (INTID 27 on yupik/a52sxq)
  * Any unexpected exception paints a blue panic screen.
  */
 #include <stdint.h>
@@ -12,8 +12,10 @@
 #include "loader.h"
 #include "ufs.h"
 
-#define IMEM_RESTART_REASON	0x146aa65cUL	/* qcom,msm-imem restart_reason@65c */
+#define IMEM_RESTART_REASON	0x146aa65cUL	/* yupik qcom,msm-imem@146aa000 restart_reason@65c */
 #define RESTART_BOOTLOADER	0x77665500U
+/* yupik has no qcom,pshold node: PSCI_SYSTEM_RESET (used first in reset()) is
+ * the path here; PSHOLD is left as a harmless last resort. */
 #define PSHOLD			0x0c264000UL
 
 #define GICD_BASE		0x17a00000UL
@@ -30,8 +32,8 @@
 #define GICR_ISPENDR0		(GICR_SGI + 0x200)
 #define GICR_ISACTIVER0		(GICR_SGI + 0x300)
 #define GICR_ICFGR1		(GICR_SGI + 0xc04)
-#define VTIMER_INTID		19	/* DT: <GIC_PPI 3 ...>, not the usual 27 */
-#define PTIMER_INTID		18	/* DT: <GIC_PPI 2 ...> */
+#define VTIMER_INTID		27	/* a52sxq: live FDT arm,armv8-timer <PPI 11> -> 16+11 */
+#define PTIMER_INTID		30	/* a52sxq: <PPI 14> (non-secure physical) -> 16+14 */
 #define SGI_INTID		1
 
 #define PSCI_VERSION		0x84000000UL
