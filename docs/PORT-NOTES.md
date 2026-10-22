@@ -300,6 +300,27 @@ Landmines cleared on the way:
 Next: drop `SHIM_NOJUMP` and let it jump; the panel should then show XNU's own
 early output (fbcon), which is the next thing to capture.
 
+## Upstream status check (2026-10-22)
+
+`dipa-studio/ios-sweet` is **3 commits ahead** of our fork only, and as of
+2026-10-18 it boots **iOS 16.7.16 (iPhone X userland) to the home screen** on the
+Redmi Note 10 Pro. So the tree we forked already contains the mature parts we
+would otherwise have to write: own UFS host driver, HFS+ root inside `userdata`,
+`IOMobileFramebuffer`/`AppleCLCD` + software CoreAnimation, Goodix touch over
+GENI-I²C, PMIC buttons via SPMI, `IOPMPowerSource`, and the activation path.
+
+What upstream still does not have (so it is out of scope here too): Wi-Fi,
+Bluetooth, cellular, audio, camera, sensors, GPS, SEP/Face ID, GPU
+acceleration (~20-30 fps CPU rendering), App Store/Apple ID, and any real
+security (permissive AMFI, stub AppleKeyStore). Boot takes ~4 minutes. Installing
+the iOS root **wipes Android userdata**.
+
+Consequence for a52sxq: the milestone ladder is
+M1 XNU prints → M2 framebuffer text → M3 UFS + HFS+ root → M4 touch +
+SpringBoard. All the code for M2-M4 exists; what is missing is our device's
+constants and driver bring-up (UFS `0x1d84000` on yupik, GIC `0x17a00000`, timer
+19.2 MHz, panel S6E3FC3).
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
