@@ -17,6 +17,26 @@ The shim runs on the real phone and prints its state to the panel. With
     BOOTARG pa=F30CC000 top=F30D0000
     JUMP    00000000F208B488
 
+## Upstream state (checked 2026-10-22)
+
+`dipa-studio/ios-sweet` (our `upstream` remote) is 3 commits ahead of this fork
+and, as of 2026-10-18, boots **iOS 16.7.16 (iPhone X userland) to the home
+screen** on the Redmi Note 10 Pro: lock screen, SpringBoard, Control Center,
+Settings, touch, buttons — CPU rendering at ~20-30 fps. No Wi-Fi, Bluetooth,
+cellular, audio, camera, sensors, GPS, SEP/Face ID, no GPU acceleration, ~4 min
+boot, AMFI permissive, stub AppleKeyStore, and installing the iOS root **wipes
+Android userdata**.
+
+Activation is *not* an Apple-server problem: the tree advertises a synthetic
+security status in the device tree and `mobileactivationd` takes its local
+"Hactivation" path. MITM of Apple's servers cannot work — activation tickets are
+signed for one device's identity and the phone's own binaries pin Apple's keys.
+
+So the ladder for a52sxq is: M1 XNU prints → M2 framebuffer text → M3 UFS +
+HFS+ root → M4 touch + SpringBoard. The code for M2-M4 already exists in our
+tree; what is missing is yupik's constants and driver bring-up (UFS `0x1d84000`,
+GIC `0x17a00000`, timer 19.2 MHz, panel S6E3FC3).
+
 ## Next step
 
 Drop `SHIM_NOJUMP`, rebuild, repack in TWRP, boot, and photograph the panel.
