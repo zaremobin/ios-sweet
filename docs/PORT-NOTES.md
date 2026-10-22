@@ -236,6 +236,38 @@ Hypotheses, in order of cheapness:
 Cheapest next session, in this order: `hello-b.img` (id) → `probe.img` (splice)
 → template-based image. All three are already built or documented here.
 
+## SOLVED: the boot path (2026-10-22)
+
+`magiskboot unpack` on the TWRP image printed the missing pieces:
+
+    RECOV_DTBO_SZ [764913]   DTB_SZ [466447]
+    SAMSUNG_SEANDROID        VBMETA
+
+A from-scratch image has none of these, which is why every hand-built variant
+fell to Download mode. Repacking the real image with `magiskboot` (which keeps
+the DTB, recovery DTBO, the `SEANDROIDENFORCE` marker and the embedded vbmeta)
+**boots**: a 4 KiB probe kernel painted the panel deep blue on the first try.
+
+Recipe that works (in TWRP, `/tmp`):
+
+    cp /sdcard/magiskboot mb && chmod 755 mb
+    dd if=/dev/block/by-name/recovery of=w.img
+    ./mb unpack w.img                 # keeps kernel/ramdisk.cpio/dtb/... on disk
+    cp <new-kernel> kernel
+    ./mb repack w.img new.img
+    dd if=new.img of=/dev/block/by-name/recovery
+
+Gotchas learned the hard way:
+
+- `/sdcard` is noexec and SELinux forbids `chmod`/`cd` under `/data` from a
+  Magisk `su` shell — do this work inside TWRP, whose shell is unrestricted.
+- A probe with no USB cannot be interrupted: the phone has to be reset by
+  holding Vol Down + Power (>7 s) or run until the battery dies. `shim/hello.S`
+  now waits 20 s on CNTPCT and issues PSCI `SYSTEM_OFF`, then `SYSTEM_RESET`, so
+  a bad probe shuts the phone down instead of stranding it.
+- The panel renders `0x0000001f` as **deep blue**, not red: this framebuffer is
+  BGRA, not RGBA.
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
