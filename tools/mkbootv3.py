@@ -13,7 +13,7 @@ Two layouts, both measured from the phone (2026-10-22):
 
 Usage: mkbootv3.py OUT.img --kernel Image [--ramdisk f] [--v2] [--check]
 """
-import argparse, struct, sys
+import argparse, hashlib, struct, sys
 
 PAGE = 4096
 HEADER_SIZE = 1580
@@ -40,6 +40,11 @@ def build_v2(kernel, ramdisk=b'', cmdline='console=null', **kw):
     cb = cmdline.encode() if isinstance(cmdline, str) else cmdline
     assert len(cb) < 512, 'v2 cmdline is limited to 511 bytes'
     h[64:64 + len(cb)] = cb
+    if kw.get('sha1_id'):
+        # AOSP mkbootimg's id field: SHA1(kernel, kernel_size, ramdisk, ramdisk_size)
+        d = hashlib.sha1(kernel + struct.pack('<I', len(kernel))
+                         + ramdisk + struct.pack('<I', len(ramdisk))).digest()
+        h[576:584] = d[:8]
     return pad(bytes(h)) + pad(kernel) + (pad(ramdisk) if ramdisk else b'')
 
 
@@ -80,12 +85,13 @@ def main():
     ap.add_argument('--ramdisk', default=None)
     ap.add_argument('--cmdline', default='console=null')
     ap.add_argument('--v2', action='store_true', help='v2 layout (recovery partition)')
+    ap.add_argument('--id', action='store_true', help='fill the v2 SHA1 id field like mkbootimg')
     ap.add_argument('--samsung', action='store_true', help='v3: append SEANDROIDENFORCE')
     ap.add_argument('--check', action='store_true')
     a = ap.parse_args()
     kernel = open(a.kernel, 'rb').read()
     ramdisk = open(a.ramdisk, 'rb').read() if a.ramdisk else b''
-    blob = (build_v2(kernel, ramdisk, a.cmdline) if a.v2
+    blob = (build_v2(kernel, ramdisk, a.cmdline, sha1_id=a.id) if a.v2
             else build_v3(kernel, ramdisk, a.cmdline, samsung=a.samsung))
     open(a.out, 'wb').write(blob)
     info = parse(blob)

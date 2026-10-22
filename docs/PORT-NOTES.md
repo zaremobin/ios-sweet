@@ -150,14 +150,19 @@ sweet's shim was already 90% right for yupik — IMEM restart reason
 - Verified locally: 7 objects compile, **0 ABS64 relocations**, `out/Image` =
   180,224 bytes, entry 0x0. `tools/selftest.sh` now covers it.
 
-Still open: the Samsung boot-image wrapper. `build.sh` needs the header version,
-kernel/ramdisk offsets, pagesize and the DTB source that this device's ABL
-accepts. That comes from the phone's own boot partition:
+**Boot image wrapper — solved (2026-10-22).** The phone's `boot` header parses
+as **v3** (header_size 1580, kernel 45,021,696 bytes, ramdisk 892,339, cmdline
+at +44, `header_version=3`), page size 4096. v3 carries no load addresses: ABL
+uses kernel 0x8000 / ramdisk 0x1000000 / tags 0x100, and the DTB stays in
+`vendor_boot` (sda21), which we leave untouched. `tools/mkbootv3.py` writes that
+wrapper and self-checks the round-trip.
 
-    adb shell su -c "dd if=/dev/block/by-name/boot of=/sdcard/boot.img"
-    adb pull /sdcard/boot.img
+Partition map (a52sxq): boot sda19, recovery sda20, vendor_boot sda21,
+vbmeta sde19, vbmeta_system sda24.
 
-then `python3 tools/unpack_bootv2.py boot.img`.
+Payload path: boot v3 has no addresses, so ABL concatenates boot's ramdisk with
+vendor_boot's; `shim/loader.c` now scans the initrd for the `SWEETXNU` magic and
+slides it to an 8-byte boundary (the same trick ios-topaz needed).
 
 ## Open items
 
