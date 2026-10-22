@@ -164,6 +164,32 @@ Payload path: boot v3 has no addresses, so ABL concatenates boot's ramdisk with
 vendor_boot's; `shim/loader.c` now scans the initrd for the `SWEETXNU` magic and
 slides it to an 8-byte boundary (the same trick ios-topaz needed).
 
+## Bring-up log — first flash attempts (2026-10-22)
+
+Partitions: boot sda19, recovery sda20, vendor_boot sda21 (96/78/96 MiB; dumps
+kept in `data/`, SHA256 of each recorded and re-checked on the PC).
+
+| attempt | image | result |
+|---|---|---|
+| 1 | v3 header, shim + payload, dd → recovery | Download mode |
+| 2 | v2 header matching TWRP exactly (kernel 0x8000, ramdisk 0x02000000, tags 0x01e00000, name SRPUE26A001) | Download mode |
+| 3 | 4 KiB probe (`shim/hello.S`) that only paints 0xe1000000 red, same v2 header | Download mode |
+
+Facts learned:
+- The recovery partition holds TWRP and parses as **v2**; its tail is zeros, so
+  `SEANDROIDENFORCE` is not required (red herring — dropped from the v2 path).
+- TWRP boots fine, so ABL is not rejecting images merely for lacking a
+  signature; even a 4 KiB position-independent kernel is rejected.
+- Suspicion now: something in the header beyond the fields we copy, or the boot
+  mode handshake (`androidboot.boot_recovery=1`, `sec_dbg`, `sec_log`,
+  `androidboot.kg.*` are injected by ABL).
+- Working restore: Odin → AP → tar holding `recovery.img` (`tar -cf
+  recovery-restore.tar recovery.img`), PASS in ~5 s, TWRP boots again.
+
+Next diagnostic: after a failed boot, `cat /proc/last_kmsg` from TWRP holds the
+ABL log — grep it for the reject reason. Never captured (phone went back to
+daily use), so that is step 1 when work resumes.
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
