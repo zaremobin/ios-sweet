@@ -65,6 +65,24 @@ static void zero64(uintptr_t dst, uint64_t n)
 		d[i] = 0;
 }
 
+/* The shim's own rodata contains the magic string, so a bare magic match can
+ * hit the literal. Validate the header fields a real payload always has. */
+static int magic_ok(const char *m);
+
+static int payload_ok(const struct payload *p)
+{
+	if (!magic_ok((const char *)p->magic))
+		return 0;
+	if (p->version != 1 || p->nsegs == 0 || p->nsegs > 64)
+		return 0;
+	if ((p->phys_base & 0x1fffffUL) || p->mem_size < 0x40000000UL ||
+	    p->mem_size > 0x100000000UL)
+		return 0;
+	if (p->phys_base + p->mem_size > 0x400000000UL)
+		return 0;
+	return 1;
+}
+
 static int magic_ok(const char *m)
 {
 	static const char want[] = "SWEETXNU";
@@ -86,32 +104,52 @@ const char *loader_boot(uintptr_t dtb)
 	con_hex2("INITRD", "lo=", rd_start, "hi=", rd_end);
 
 	/*
-	 * ABL concatenates boot's ramdisk with vendor_boot's, so our payload is
-	 * not guaranteed to sit at initrd-start. Scan for the magic instead and
-	 * slide it down to an 8-byte aligned address if needed.
+	 * Two places are searched: the initrd (ABL may prepend vendor_boot's
+	 * ramdisk, and magiskboot may recompress it) and our own kernel Image,
+	 * where the build appends the payload so nothing can hide it.
 	 */
-	uintptr_t hit = 0;
-	for (uintptr_t a = rd_start; a + 8 <= rd_end; a++)
-		if (magic_ok((const char *)a)) {
-			hit = a;
+	const struct payload *p = 0;
+	for (uintptr_t a = rd_start; a + sizeof(struct payload) <= rd_end; a += 8)
+		if (payload_ok((const struct payload *)a)) {
+			p = (const struct payload *)a;
 			break;
 		}
-	if (!hit)
+	if (!p) {
+		extern char _head[];
+		for (uintptr_t a = (uintptr_t)_head + 0x1000;
+		     a < (uintptr_t)_head + 0x800000; a += 8)
+			if (payload_ok((const struct payload *)a)) {
+				p = (const struct payload *)a;
+				break;
+			}
+	}
+	if (!p)
 		return "no SWEETXNU payload";
-	if (hit != rd_start) {
-		uintptr_t dst = (rd_start + 7) & ~7UL;
-		volatile uint8_t *d = (volatile uint8_t *)dst;
-		volatile const uint8_t *src = (volatile const uint8_t *)hit;
+
+	uintptr_t hit = (uintptr_t)p;
+	uint64_t extent = sizeof(*p) + (uint64_t)p->nsegs * sizeof(struct payload_seg);
+
+	for (uint32_t i = 0; i < p->nsegs; i++) {
+		uint64_t e = p->segs[i].file_off + p->segs[i].file_size;
+		if (e > extent)
+			extent = e;
+	}
+	if (p->adt_off + p->adt_size > extent)
+		extent = p->adt_off + p->adt_size;
+
+	/* Slide to an 8-byte boundary only when the payload sits in the initrd. */
+	if (hit >= rd_start && hit < rd_end && (hit & 7)) {
+		uintptr_t dst = (hit + 7) & ~7UL;
 
 		con_hex2("PAYLOAD", "at=", hit, "to=", dst);
-		for (uint64_t i = 0; i < rd_end - hit; i++)
-			d[i] = src[i];
-		rd_end = dst + (rd_end - hit);
-		rd_start = dst;
+		for (uint64_t i = 0; i < extent; i++)
+			((volatile uint8_t *)dst)[i] = ((volatile const uint8_t *)hit)[i];
+		p = (const struct payload *)dst;
+		hit = dst;
 	}
-	const struct payload *p = (const struct payload *)rd_start;
-	if (!magic_ok(p->magic))
-		return "no SWEETXNU payload";
+	rd_start = hit;
+	rd_end = hit + extent;
+
 	if (p->version != 1 || (p->adt_off & 7) || (rd_start & 7))
 		return "bad payload header";
 

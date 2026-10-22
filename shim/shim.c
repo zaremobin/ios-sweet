@@ -41,6 +41,7 @@
 #define PSCI_CPU_OFF		0x84000002UL
 #define PSCI_CPU_ON		0xc4000003UL
 #define PSCI_MIGRATE_INFO_TYPE	0x84000006UL
+#define PSCI_SYSTEM_OFF	0x84000008UL
 #define PSCI_SYSTEM_RESET	0x84000009UL
 #define PSCI_FEATURES		0x8400000aUL
 #define PSCI_SYSTEM_SUSPEND	0xc400000eUL
@@ -106,10 +107,12 @@ static void delay_ms(unsigned ms)
 static void __attribute__((noreturn)) reset(unsigned after_s)
 {
 	con_skip();
-	con_str("RESET", after_s > 20 ? "in 40s" : "in 20s");
+	con_str("POWEROFF", after_s > 20 ? "in 40s" : "in 20s");
 	delay_ms(after_s * 1000);
-	wr32(IMEM_RESTART_REASON, RESTART_BOOTLOADER);
 	__asm__ volatile("dsb sy" ::: "memory");
+	/* Power off rather than reset: a failed bring-up attempt must never leave
+	 * the phone looping on a dead kernel with no way in but the key combo. */
+	smc(PSCI_SYSTEM_OFF, 0, 0, 0);
 	smc(PSCI_SYSTEM_RESET, 0, 0, 0);
 	wr32(PSHOLD, 0);
 	for (;;)
