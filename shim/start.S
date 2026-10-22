@@ -34,7 +34,16 @@ _start:
 	b.hs	2f
 	str	xzr, [x1], #8
 	b	1b
-2:	mov	x0, x19
+2:	/* Ultra-early proof of life: 16 KiB of green at the splash framebuffer.
+	   If the panel shows green at all, we got here; if it stays black, ABL never
+	   reached our entry point. */
+	movz	x1, #0xe100, lsl #16
+	movz	w2, #0x00ff
+	movz	w3, #0x1000
+5:	str	w2, [x1], #4
+	subs	w3, w3, #1
+	b.ne	5b
+	mov	x0, x19
 	bl	shim_main
 3:	wfe
 	b	3b

@@ -204,6 +204,23 @@ const char *loader_boot(uintptr_t dtb)
 
 	/* Everything was written with the MMU and caches off; drop any stale I-cache lines too. */
 	__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
+#ifdef SHIM_NOJUMP
+	/* Debug build: show what we parsed and stop, so the screen can be read. */
+	con_str("STOP", "not jumping (SHIM_NOJUMP), power off in 60s");
+	uint64_t t0 = 0, f = 0;
+	__asm__ volatile("mrs %0, cntpct_el0" : "=r"(t0));
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(f));
+	uint64_t t1 = t0 + f * 60;
+	for (uint64_t t = t0;;) {
+		__asm__ volatile("mrs %0, cntpct_el0; wfi" : "=r"(t));
+		if (t >= t1)
+			break;
+	}
+	__asm__ volatile("mov x0, #0" ::: "x0");
+	__asm__ volatile("movz w0, #0x8400, lsl #16\n	movk w0, #0x0008\n	smc #0" ::: "x0");
+	for (;;)
+		__asm__ volatile("wfi");
+#endif
 	((xnu_entry_t)entry_pa)(ba_pa);
 	return "xnu returned";
 }

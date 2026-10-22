@@ -268,6 +268,38 @@ Gotchas learned the hard way:
 - The panel renders `0x0000001f` as **deep blue**, not red: this framebuffer is
   BGRA, not RGBA.
 
+## First light: the shim runs and parses the payload (2026-10-22)
+
+Recovery image = TWRP repacked by magiskboot with our kernel appended payload,
+`SHIM_NOJUMP=1`. Screen text captured from the panel:
+
+    SHIM    sweet milestone 4: xnu loader
+    INITRD  lo=AE7C2000 hi=AFFFEB10
+    PHYS    base=F0C00000 size=8F400000
+    VIRT    FFFFFE0006000000
+    ENTRY   FFFFFE000748B488
+    SEGS    n=0000000A end=F30CB000
+    BOOTARG pa=F30CC000 top=F30D0000
+    JUMP    00000000F208B488
+    XNU     jumping (fbcon clears screen)
+    STOP    not jumping (SHIM_NOJUMP), power off
+
+Landmines cleared on the way:
+
+- `shim/console.h` still had sweet's `FB_BASE 0x9c000000`; a52sxq's splash is at
+  **0xe1000000**. With the wrong base the shim looked hung — it was drawing into
+  nothing. The early-paint probe in `start.S` (16 KiB at 0xe1000000) is what
+  proved execution reached our entry point.
+- The kernel Image header's `image_size` (offset 16) must be updated after the
+  payload is appended, otherwise ABL copies only the original size.
+- Wrong FB base also meant the first "black screen + one blue line" reading: the
+  blue line was the early paint, the black was everything else.
+- `SHIM_NOJUMP` (`SHIM_DEFS=-DSHIM_NOJUMP` in `shim/build.sh`) is the debug switch
+  that stops before the kernel jump, holds the screen for 60 s and powers off.
+
+Next: drop `SHIM_NOJUMP` and let it jump; the panel should then show XNU's own
+early output (fbcon), which is the next thing to capture.
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
