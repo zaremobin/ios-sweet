@@ -190,6 +190,52 @@ Next diagnostic: after a failed boot, `cat /proc/last_kmsg` from TWRP holds the
 ABL log — grep it for the reject reason. Never captured (phone went back to
 daily use), so that is step 1 when work resumes.
 
+## Research round (2026-10-22): why ABL refuses our image
+
+Sources that matter:
+
+- **LineageOS `sm7325-common` BoardConfigCommon.mk** — the authoritative layout
+  for this SoC: `BOARD_BOOT_HEADER_VERSION := 3`, kernel base 0x0, kernel offset
+  0x8000, ramdisk offset **0x02000000**, tags 0x01e00000, **dtb offset
+  0x01f00000**, page 4096, `BOARD_KERNEL_SEPARATED_DTBO := true`,
+  `BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3` (verity + verification
+  disabled → unsigned boot/recovery images are expected to boot).
+- **Ghostess/ghost_kernel_a52s_5g + bone-machine's A52s kernel** — they never
+  build a boot image from scratch: `build_kernel_zip.sh` repacks a *base image*
+  with **magiskboot**, which carries every Samsung-specific header byte
+  (`extra_cmdline` is random-looking bytes, the 1620+ block, the SHA1 `id`)
+  through untouched. Confidence boost for the template idea below.
+- **TWRP header (measured, 64 KiB dump)** — id `bd40652ab1822957`, `text_offset
+  0x80000`, `image_size 0x2b260`, and bytes 1620-1664 hold six more u32/u64-ish
+  values (`0x000babf1, 0x0410b000, 0, 0x67c, 0x071e0f, 0x01f00000…`) that are
+  not in the AOSP header. Which of these ABL actually reads is unknown.
+- **kernel.org arm64 booting** — a Linux `Image` must sit `text_offset` bytes
+  from a 2 MiB aligned base, so a header with `text_offset 0` and code at offset
+  0 is legal; ABL, however, may jump to `kernel_addr + text_offset` regardless,
+  which is exactly what TWRP's 0x80000 implies.
+- **pmaports** has no `device-samsung-a52sxq` (checked all of device/main,
+  device/community, device/testing), so no ready-made mainline boot recipe.
+  Mainline does have SM7325 DTs (`sm7325-nothing-spacewar`, `-motorola-dubai`,
+  `-xiaomi-taoyao`) — same SoC family, no yupik DT yet.
+
+Hypotheses, in order of cheapness:
+
+1. **`id` field**: TWRP's header has it non-zero; both images we flashed left it
+   zero. An image with a correct SHA1 `id` was built (`hello-b.img`) but never
+   flashed.
+2. **Entry address**: ABL may jump to `kernel_addr + text_offset`. Splice test:
+   write our 4 KiB probe into an untouched copy of the TWRP image at
+   `4096 + 0x80000` and change nothing else (`probe.img` recipe). If the screen
+   turns red, ABL honours `text_offset` and arbitrary kernel bytes are fine.
+3. **Samsung header extras** (bytes 1620-1664). Fix: build from TWRP's page 0 as
+   a template, patch only the size/address/cmdline fields, recompute `id`.
+4. **Boot-failure fallback**: Samsung drops to Download mode when the kernel
+   dies. If (2) shows red but the shim still fails, the shim itself is crashing,
+   not ABL rejecting the image.
+
+Cheapest next session, in this order: `hello-b.img` (id) → `probe.img` (splice)
+→ template-based image. All three are already built or documented here.
+
 ## Open items
 
 1. ~~DRAM banks~~ **done** — live banks in `mkadt.py`; `selftest.sh` re-checks
