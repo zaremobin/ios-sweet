@@ -37,7 +37,9 @@ fi
 # Boot image writer: header v3 round-trip
 python3 tools/mkbootv3.py "$tmp/boot.img" --kernel shim/out/Image --ramdisk /dev/null --check >/dev/null 2>&1   || { echo "FAIL: mkbootv3 self-check"; exit 1; }
 [ "$(stat -c%s "$tmp/boot.img")" = "184320" ] || { echo "FAIL: unexpected boot image size"; exit 1; }
-echo "OK: boot image v3 written (184320 bytes)"
+python3 tools/mkbootv3.py "$tmp/rec.img" --kernel shim/out/Image --ramdisk /dev/null --v2 --check >/dev/null 2>&1 \
+  || { echo "FAIL: mkbootv3 v2 self-check"; exit 1; }
+echo "OK: boot images v3 and v2 written"
 
 echo "OK: ADT builds, identity present, FDT memory/GIC/UFS parsed"
 
